@@ -4,7 +4,7 @@ import os
 
 # ✅ Load dataset
 ROOT_DIR = os.path.dirname(os.path.dirname(__file__))
-DATA_PATH = os.path.join(ROOT_DIR, "datacosts.xlsx")
+DATA_PATH = os.path.join(ROOT_DIR, "datacost.xlsx")
 
 if not os.path.exists(DATA_PATH):
     raise FileNotFoundError(f"Dataset not found at {DATA_PATH}")
