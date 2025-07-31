@@ -11,7 +11,7 @@ if not os.path.exists(DATA_PATH):
 
 quotes_df = pd.read_excel(DATA_PATH)
 
-# ✅ Create helper columns for matching
+# ✅ Helper columns
 quotes_df["FOB_Name"] = quotes_df["ORIGIN"].astype(str).str.strip()
 quotes_df["Dest_Name"] = quotes_df["DESTINATION"].astype(str).str.strip()
 
@@ -19,26 +19,23 @@ def get_quote_from_dataset(fob, destination, distance_km):
     fob = fob.strip()
     destination = destination.strip()
 
-    # ✅ 1. Exact Match → Average all quotes for this FOB-Destination pair
+    # ✅ 1. Exact Match → Average all quotes for this pair
     matches = quotes_df[
         (quotes_df["FOB_Name"].str.lower() == fob.lower()) &
         (quotes_df["Dest_Name"].str.lower() == destination.lower())
     ]
 
     if not matches.empty:
-        # Extract numeric fields
+        count_quotes = len(matches)
+
         linehauls = matches["LINEHAUL"].astype(float)
-        fuel_percents = matches["FUEL"].astype(float)  # expected to be decimal (0.25 = 25%)
+        fuel_percents = matches["FUEL"].astype(float)
         other_costs = matches["OTHER"].astype(float)
         tank_washes = matches["TANK WASH"].astype(float)
 
-        # ✅ Calculate per-quote fuel costs
         fuel_costs = linehauls * fuel_percents
+        totals = linehauls + fuel_costs + other_costs  # ✅ exclude tank wash
 
-        # ✅ Total per quote (excluding tank wash)
-        totals = linehauls + fuel_costs + other_costs
-
-        # ✅ Calculate averages
         avg_linehaul = round(linehauls.mean(), 2)
         avg_fuel = round(fuel_costs.mean(), 2)
         avg_other = round(other_costs.mean(), 2)
@@ -50,10 +47,11 @@ def get_quote_from_dataset(fob, destination, distance_km):
             "fuel": avg_fuel,
             "tank_wash": avg_tank_wash,
             "other": avg_other,
-            "total": avg_total
+            "total": avg_total,
+            "note": f"Average of {count_quotes} quotes"
         }
 
-    # ✅ 2. Unknown Route → Calculate global average CPM (excluding tank wash)
+    # ✅ 2. Unknown Route → Average CPM across all quotes
     if "Origin Latitude" in quotes_df.columns and "Destination Latitude" in quotes_df.columns:
         route_distances = np.sqrt(
             (quotes_df["Destination Latitude"] - quotes_df["Origin Latitude"])**2 +
@@ -64,7 +62,6 @@ def get_quote_from_dataset(fob, destination, distance_km):
 
     route_distances[route_distances < 1] = 1
 
-    # ✅ Adjusted totals for CPM calculation (excluding tank wash)
     adj_totals = []
     for _, r in quotes_df.iterrows():
         l = float(r["LINEHAUL"])
