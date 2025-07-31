@@ -1,31 +1,43 @@
 from flask import Flask, render_template, request, jsonify
+import pandas as pd
 import requests
-from services.cost_calculator import calculate_costs
+from services.cost_calculator import get_quote_from_dataset
+import os
 
 app = Flask(__name__)
 
-# Example FOB data
-FOBS = {
-    "Houston, TX": {"lat": 29.7604, "lon": -95.3698},
-    "Corpus Christi, TX": {"lat": 27.8006, "lon": -97.3964},
-    "Lake Charles, LA": {"lat": 30.2266, "lon": -93.2174}
-}
+# ✅ Load FOBs dynamically from the dataset
+DATA_PATH = os.path.join(os.path.dirname(__file__), "datacost.xlsx")
+df = pd.read_excel(DATA_PATH)
+
+# Create a FOB dictionary { "FOB Name": {"lat": .., "lon": ..} }
+FOBS = {}
+for _, row in df.iterrows():
+    fob_name = str(row["ORIGIN"]).strip()
+    if fob_name not in FOBS:
+        FOBS[fob_name] = {
+            "lat": float(row["Origin Latitude"]),
+            "lon": float(row["Origin Longitude"])
+        }
 
 OSRM_URL = "http://router.project-osrm.org/route/v1/driving/"
 
 @app.route("/")
 def index():
+    # ✅ Pass dynamically loaded FOB names to frontend
     return render_template("index.html", fobs=list(FOBS.keys()))
 
 @app.route("/route", methods=["POST"])
 def get_route():
     data = request.json
     fob_name = data.get("fob")
+    dest_name = data.get("destination_name", "")
     dest_lat = data.get("dest_lat")
     dest_lon = data.get("dest_lon")
 
+    # ✅ Check if FOB exists in dataset
     if fob_name not in FOBS:
-        return jsonify({"error": "Invalid FOB"}), 400
+        return jsonify({"error": "FOB not found in dataset"}), 400
 
     origin = FOBS[fob_name]
     coords = f"{origin['lon']},{origin['lat']};{dest_lon},{dest_lat}"
@@ -38,8 +50,8 @@ def get_route():
     route = r.json()["routes"][0]
     distance_km = route["distance"] / 1000
 
-    # Calculate costs using your business logic
-    costs = calculate_costs(distance_km)
+    # ✅ Retrieve cost from dataset (exact or closest match)
+    costs = get_quote_from_dataset(fob_name, dest_name, distance_km)
 
     return jsonify({
         "distance_km": distance_km,
