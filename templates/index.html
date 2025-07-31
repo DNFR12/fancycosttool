@@ -9,9 +9,9 @@
         body { margin:0; font-family: Arial; }
         #map { height: 100vh; width: 100%; }
         #panel {
-            position: absolute; top:70px; left:10px; /* ✅ moved down to avoid zoom control overlap */
+            position: absolute; top:70px; left:10px;
             background: white; padding: 10px; z-index: 1000;
-            width: 280px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            width: 300px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
         }
         #panel select, #panel input, #panel button { width: 100%; margin-bottom: 8px; padding: 6px; }
         #costs { font-size: 14px; }
@@ -22,7 +22,7 @@
         <h3>Freight Cost Tool</h3>
 
         <label>FOB:</label>
-        <select id="fob">
+        <select id="fob" onchange="updateKnownDestinations()">
             {% for f in fobs %}
             <option value="{{ f }}">{{ f }}</option>
             {% endfor %}
@@ -30,10 +30,7 @@
 
         <h4>Known Quoted Destinations:</h4>
         <select id="known_destination">
-            <option value="">-- Select if known --</option>
-            {% for d in destinations %}
-            <option value="{{ d }}">{{ d }}</option>
-            {% endfor %}
+            <option value="">-- Select a destination --</option>
         </select>
 
         <h4>Unknown Destination (Type to Estimate):</h4>
@@ -46,10 +43,27 @@
     <div id="map"></div>
 
 <script>
+const fobDestMap = {{ fob_dest_map|tojson }};
 const map = L.map('map').setView([31, -95], 5);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
 let routeLine;
+
+function updateKnownDestinations() {
+    const fob = document.getElementById("fob").value;
+    const destDropdown = document.getElementById("known_destination");
+    destDropdown.innerHTML = '<option value="">-- Select a destination --</option>';
+    if (fobDestMap[fob]) {
+        fobDestMap[fob].forEach(d => {
+            const opt = document.createElement("option");
+            opt.value = d.name;
+            opt.setAttribute("data-lat", d.lat);
+            opt.setAttribute("data-lon", d.lon);
+            opt.textContent = d.name;
+            destDropdown.appendChild(opt);
+        });
+    }
+}
 
 async function geocode(query) {
     const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`;
@@ -60,26 +74,30 @@ async function geocode(query) {
 
 async function calculateRoute() {
     const fob = document.getElementById("fob").value;
-    const knownDest = document.getElementById("known_destination").value;
+    const knownDestEl = document.getElementById("known_destination");
+    const knownDest = knownDestEl.value;
     const unknownDest = document.getElementById("unknown_destination").value;
 
-    let destination_name = knownDest || unknownDest;
-    if (!destination_name) {
-        alert("Please select a known destination or enter an unknown destination.");
-        return;
-    }
+    let destination_name, destCoords;
+    let isEstimate = false;
 
-    let destCoords;
     if (knownDest) {
-        // ✅ Known destination → no OSRM, send dummy coords
-        destCoords = {lat: 0, lon: 0};
-    } else {
-        // ✅ Unknown destination → geocode
+        destination_name = knownDest;
+        destCoords = {
+            lat: parseFloat(knownDestEl.options[knownDestEl.selectedIndex].dataset.lat),
+            lon: parseFloat(knownDestEl.options[knownDestEl.selectedIndex].dataset.lon)
+        };
+    } else if (unknownDest) {
+        destination_name = unknownDest;
         destCoords = await geocode(unknownDest);
+        isEstimate = true;
         if (!destCoords) {
             alert("Destination not found.");
             return;
         }
+    } else {
+        alert("Please select a known destination or enter an unknown destination.");
+        return;
     }
 
     const response = await axios.post("/route", {
@@ -91,28 +109,28 @@ async function calculateRoute() {
 
     const data = response.data;
     if (routeLine) map.removeLayer(routeLine);
-
     routeLine = L.geoJSON(data.geometry).addTo(map);
     map.fitBounds(routeLine.getBounds());
 
     const c = data.costs;
     let html = `<b>Distance:</b> ${data.distance_km.toFixed(2)} km<br>`;
+    html += knownDest ? `<span style="color:green;font-weight:bold;">(Quoted Route)</span><br>` :
+                        `<span style="color:orange;font-weight:bold;">(Estimate)</span><br>`;
 
     if (c.linehaul !== undefined) {
-        html += `<span style="color:green;font-weight:bold;">(Quoted Route)</span><br>`;
         html += `
             <b>Linehaul:</b> $${c.linehaul}<br>
             <b>Fuel:</b> $${c.fuel}<br>
             <b>Tank Wash:</b> $${c.tank_wash}<br>
             <b>Other:</b> $${c.other}<br>
         `;
-    } else {
-        html += `<span style="color:orange;font-weight:bold;">(Estimate)</span><br>`;
     }
-
     html += `<b>Total:</b> <strong>$${c.total}</strong>`;
     document.getElementById("costs").innerHTML = html;
 }
+
+// Initialize destinations for first FOB
+updateKnownDestinations();
 </script>
 </body>
 </html>
