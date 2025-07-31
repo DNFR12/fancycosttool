@@ -4,7 +4,6 @@
     <title>Freight Cost Map</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.js"></script>
     <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
     <style>
         body { margin:0; font-family: Arial; }
@@ -42,7 +41,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
 let routeLine;
 
-// Geocode destination using Nominatim
+// ✅ Geocode destination using OpenStreetMap Nominatim
 async function geocode(query) {
     const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`;
     const res = await fetch(url);
@@ -62,6 +61,7 @@ async function calculateRoute() {
 
     const response = await axios.post("/route", {
         fob: fob,
+        destination_name: destination,   // ✅ send user input
         dest_lat: destCoords.lat,
         dest_lon: destCoords.lon
     });
