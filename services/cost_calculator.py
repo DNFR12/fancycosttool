@@ -4,14 +4,14 @@ import os
 
 # ✅ Load dataset
 ROOT_DIR = os.path.dirname(os.path.dirname(__file__))  
-DATA_PATH = os.path.join(ROOT_DIR, "datacost.xlsx")
+DATA_PATH = os.path.join(ROOT_DIR, "datacosts.xlsx")
 
 if not os.path.exists(DATA_PATH):
     raise FileNotFoundError(f"Dataset not found at {DATA_PATH}")
 
 quotes_df = pd.read_excel(DATA_PATH)
 
-# ✅ Helper columns for matching
+# ✅ Create helper columns for matching
 quotes_df["FOB_Name"] = quotes_df["ORIGIN"].astype(str).str.strip()
 quotes_df["Dest_Name"] = quotes_df["DESTINATION"].astype(str).str.strip()
 
@@ -19,30 +19,41 @@ def get_quote_from_dataset(fob, destination, distance_km):
     fob = fob.strip()
     destination = destination.strip()
 
-    # ✅ 1. Exact Match → Calculate using Linehaul & Fuel% formula
-    match = quotes_df[
+    # ✅ 1. Exact Match → Average all quotes for this FOB-Destination pair
+    matches = quotes_df[
         (quotes_df["FOB_Name"].str.lower() == fob.lower()) &
         (quotes_df["Dest_Name"].str.lower() == destination.lower())
     ]
-    if not match.empty:
-        row = match.iloc[0]
-        linehaul = float(row["LINEHAUL"])
-        fuel_percent = float(row["FUEL"])   # Treat as decimal (e.g., 0.25 for 25%)
-        fuel_cost = linehaul * fuel_percent
-        other_cost = float(row["OTHER"])
-        tank_wash = float(row["TANK WASH"])
 
-        total = round(linehaul + fuel_cost + other_cost, 2)  # ✅ Tank Wash excluded
+    if not matches.empty:
+        # Extract numeric fields
+        linehauls = matches["LINEHAUL"].astype(float)
+        fuel_percents = matches["FUEL"].astype(float)  # expected to be decimal (0.25 = 25%)
+        other_costs = matches["OTHER"].astype(float)
+        tank_washes = matches["TANK WASH"].astype(float)
+
+        # ✅ Calculate per-quote fuel costs
+        fuel_costs = linehauls * fuel_percents
+
+        # ✅ Total per quote (excluding tank wash)
+        totals = linehauls + fuel_costs + other_costs
+
+        # ✅ Calculate averages
+        avg_linehaul = round(linehauls.mean(), 2)
+        avg_fuel = round(fuel_costs.mean(), 2)
+        avg_other = round(other_costs.mean(), 2)
+        avg_tank_wash = round(tank_washes.mean(), 2)
+        avg_total = round(totals.mean(), 2)
 
         return {
-            "linehaul": round(linehaul, 2),
-            "fuel": round(fuel_cost, 2),
-            "tank_wash": round(tank_wash, 2),
-            "other": round(other_cost, 2),
-            "total": total
+            "linehaul": avg_linehaul,
+            "fuel": avg_fuel,
+            "tank_wash": avg_tank_wash,
+            "other": avg_other,
+            "total": avg_total
         }
 
-    # ✅ 2. Unknown Route → Use Average Cost Per Mile (still ignores Tank Wash)
+    # ✅ 2. Unknown Route → Calculate global average CPM (excluding tank wash)
     if "Origin Latitude" in quotes_df.columns and "Destination Latitude" in quotes_df.columns:
         route_distances = np.sqrt(
             (quotes_df["Destination Latitude"] - quotes_df["Origin Latitude"])**2 +
@@ -53,15 +64,15 @@ def get_quote_from_dataset(fob, destination, distance_km):
 
     route_distances[route_distances < 1] = 1
 
-    # ✅ Average CPM based on adjusted formula (excluding tank wash)
+    # ✅ Adjusted totals for CPM calculation (excluding tank wash)
     adj_totals = []
     for _, r in quotes_df.iterrows():
         l = float(r["LINEHAUL"])
         f_pct = float(r["FUEL"])
         o = float(r["OTHER"])
         adj_totals.append(l + (l * f_pct) + o)
-    avg_cost_per_mile = np.mean(adj_totals / route_distances)
 
+    avg_cost_per_mile = np.mean(np.array(adj_totals) / route_distances)
     estimated_total = round(distance_km * avg_cost_per_mile, 2)
 
     return {
