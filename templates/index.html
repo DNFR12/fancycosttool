@@ -9,7 +9,7 @@
         body { margin:0; font-family: Arial; }
         #map { height: 100vh; width: 100%; }
         #panel {
-            position: absolute; top:10px; left:10px;
+            position: absolute; top:70px; left:10px;   /* ✅ moved down below zoom controls */
             background: white; padding: 10px; z-index: 1000;
             width: 250px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
         }
@@ -61,7 +61,7 @@ async function calculateRoute() {
 
     const response = await axios.post("/route", {
         fob: fob,
-        destination_name: destination,   // ✅ send user input
+        destination_name: destination,
         dest_lat: destCoords.lat,
         dest_lon: destCoords.lon
     });
@@ -73,15 +73,20 @@ async function calculateRoute() {
     map.fitBounds(routeLine.getBounds());
 
     const c = data.costs;
-    document.getElementById("costs").innerHTML = `
-        <b>Distance:</b> ${data.distance_km.toFixed(2)} km<br>
-        <b>Linehaul:</b> $${c.linehaul}<br>
-        <b>Fuel:</b> $${c.fuel}<br>
-        <b>Tank Wash:</b> $${c.tank_wash}<br>
-        <b>Other:</b> $${c.other}<br>
-        <b>Demurrage:</b> $${c.demurrage}<br>
-        <b>Total:</b> <strong>$${c.total}</strong>
-    `;
+    let html = `<b>Distance:</b> ${data.distance_km.toFixed(2)} km<br>`;
+
+    // ✅ Show breakdown only if it's available
+    if (c.linehaul !== undefined) {
+        html += `
+            <b>Linehaul:</b> $${c.linehaul}<br>
+            <b>Fuel:</b> $${c.fuel}<br>
+            <b>Tank Wash:</b> $${c.tank_wash}<br>
+            <b>Other:</b> $${c.other}<br>
+        `;
+    }
+
+    html += `<b>Total:</b> <strong>$${c.total}</strong>`;
+    document.getElementById("costs").innerHTML = html;
 }
 </script>
 </body>
