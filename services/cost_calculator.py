@@ -3,15 +3,15 @@ import numpy as np
 import os
 
 # ✅ Load dataset
-ROOT_DIR = os.path.dirname(os.path.dirname(__file__))  
-DATA_PATH = os.path.join(ROOT_DIR, "datacost.xlsx")
+ROOT_DIR = os.path.dirname(os.path.dirname(__file__))
+DATA_PATH = os.path.join(ROOT_DIR, "datacosts.xlsx")
 
 if not os.path.exists(DATA_PATH):
     raise FileNotFoundError(f"Dataset not found at {DATA_PATH}")
 
 quotes_df = pd.read_excel(DATA_PATH)
 
-# ✅ Helper columns
+# ✅ Add helper columns for matching
 quotes_df["FOB_Name"] = quotes_df["ORIGIN"].astype(str).str.strip()
 quotes_df["Dest_Name"] = quotes_df["DESTINATION"].astype(str).str.strip()
 
@@ -19,7 +19,7 @@ def get_quote_from_dataset(fob, destination, distance_km):
     fob = fob.strip()
     destination = destination.strip()
 
-    # ✅ 1. Exact Match → Average all quotes for this pair
+    # ✅ 1. Exact Match → Average all quotes for this FOB-Destination pair
     matches = quotes_df[
         (quotes_df["FOB_Name"].str.lower() == fob.lower()) &
         (quotes_df["Dest_Name"].str.lower() == destination.lower())
@@ -29,16 +29,18 @@ def get_quote_from_dataset(fob, destination, distance_km):
         count_quotes = len(matches)
 
         linehauls = matches["LINEHAUL"].astype(float)
-        fuel_percents = matches["FUEL"].astype(float)
-        other_costs = matches["OTHER"].astype(float)
+        fuel_percents = matches["FUEL"].astype(float)  # expected decimal (0.25 = 25%)
         tank_washes = matches["TANK WASH"].astype(float)
 
+        # ✅ Fuel cost = linehaul × fuel%
         fuel_costs = linehauls * fuel_percents
-        totals = linehauls + fuel_costs + other_costs  # ✅ exclude tank wash
 
+        # ✅ Total excludes tank wash & dataset 'OTHER'
+        totals = linehauls + fuel_costs
+
+        # ✅ Averages
         avg_linehaul = round(linehauls.mean(), 2)
         avg_fuel = round(fuel_costs.mean(), 2)
-        avg_other = round(other_costs.mean(), 2)
         avg_tank_wash = round(tank_washes.mean(), 2)
         avg_total = round(totals.mean(), 2)
 
@@ -46,12 +48,11 @@ def get_quote_from_dataset(fob, destination, distance_km):
             "linehaul": avg_linehaul,
             "fuel": avg_fuel,
             "tank_wash": avg_tank_wash,
-            "other": avg_other,
             "total": avg_total,
             "note": f"Average of {count_quotes} quotes"
         }
 
-    # ✅ 2. Unknown Route → Average CPM across all quotes
+    # ✅ 2. Unknown Route → Weighted Average CPM (linehaul + fuel%)
     if "Origin Latitude" in quotes_df.columns and "Destination Latitude" in quotes_df.columns:
         route_distances = np.sqrt(
             (quotes_df["Destination Latitude"] - quotes_df["Origin Latitude"])**2 +
@@ -60,17 +61,22 @@ def get_quote_from_dataset(fob, destination, distance_km):
     else:
         route_distances = np.full(len(quotes_df), distance_km)
 
-    route_distances[route_distances < 1] = 1
+    route_distances[route_distances < 1] = 1  # avoid divide-by-zero
 
-    adj_totals = []
+    # ✅ Total cost for CPM (exclude other & tank wash)
+    total_costs = []
     for _, r in quotes_df.iterrows():
         l = float(r["LINEHAUL"])
         f_pct = float(r["FUEL"])
-        o = float(r["OTHER"])
-        adj_totals.append(l + (l * f_pct) + o)
+        total_costs.append(l + (l * f_pct))
 
-    avg_cost_per_mile = np.mean(np.array(adj_totals) / route_distances)
-    estimated_total = round(distance_km * avg_cost_per_mile, 2)
+    total_costs = np.array(total_costs)
+
+    # ✅ Weighted CPM = sum(cost) / sum(distance)
+    weighted_cpm = total_costs.sum() / route_distances.sum()
+
+    # ✅ Estimated total
+    estimated_total = round(distance_km * weighted_cpm, 2)
 
     return {
         "total": estimated_total
