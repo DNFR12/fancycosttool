@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Freight Cost Map</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.js"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <style>
+        body { margin:0; font-family: Arial; }
+        #map { height: 100vh; width: 100%; }
+        #panel {
+            position: absolute; top:10px; left:10px;
+            background: white; padding: 10px; z-index: 1000;
+            width: 250px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        }
+        #panel select, #panel input, #panel button { width: 100%; margin-bottom: 8px; padding: 6px; }
+        #costs { font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div id="panel">
+        <h3>Freight Cost Tool</h3>
+        <label>FOB:</label>
+        <select id="fob">
+            {% for f in fobs %}
+            <option value="{{ f }}">{{ f }}</option>
+            {% endfor %}
+        </select>
+
+        <label>Destination:</label>
+        <input type="text" id="destination" placeholder="Enter city..." />
+        <button onclick="calculateRoute()">Calculate</button>
+
+        <div id="costs"></div>
+    </div>
+    <div id="map"></div>
+
+<script>
+const map = L.map('map').setView([31, -95], 5);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+let routeLine;
+
+// Geocode destination using Nominatim
+async function geocode(query) {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    return data.length ? {lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon)} : null;
+}
+
+async function calculateRoute() {
+    const fob = document.getElementById("fob").value;
+    const destination = document.getElementById("destination").value;
+
+    const destCoords = await geocode(destination);
+    if (!destCoords) {
+        alert("Destination not found");
+        return;
+    }
+
+    const response = await axios.post("/route", {
+        fob: fob,
+        dest_lat: destCoords.lat,
+        dest_lon: destCoords.lon
+    });
+
+    const data = response.data;
+    if (routeLine) map.removeLayer(routeLine);
+
+    routeLine = L.geoJSON(data.geometry).addTo(map);
+    map.fitBounds(routeLine.getBounds());
+
+    const c = data.costs;
+    document.getElementById("costs").innerHTML = `
+        <b>Distance:</b> ${data.distance_km.toFixed(2)} km<br>
+        <b>Linehaul:</b> $${c.linehaul}<br>
+        <b>Fuel:</b> $${c.fuel}<br>
+        <b>Tank Wash:</b> $${c.tank_wash}<br>
+        <b>Other:</b> $${c.other}<br>
+        <b>Demurrage:</b> $${c.demurrage}<br>
+        <b>Total:</b> <strong>$${c.total}</strong>
+    `;
+}
+</script>
+</body>
+</html>
