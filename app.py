@@ -7,7 +7,7 @@ from services.cost_calculator import get_quote_from_dataset
 app = Flask(__name__)
 
 # ✅ Load FOBs dynamically
-DATA_PATH = os.path.join(os.path.dirname(__file__), "datacosts.xlsx")
+DATA_PATH = os.path.join(os.path.dirname(__file__), "datacost.xlsx")
 df = pd.read_excel(DATA_PATH)
 
 FOBS = {}
