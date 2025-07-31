@@ -3,10 +3,15 @@ import numpy as np
 import os
 
 # ✅ Load dataset
-DATA_PATH = os.path.join(os.path.dirname(__file__), "../datacost.xlsx")
+ROOT_DIR = os.path.dirname(os.path.dirname(__file__))  # go up from /services
+DATA_PATH = os.path.join(ROOT_DIR, "datacosts.xlsx")
+
+if not os.path.exists(DATA_PATH):
+    raise FileNotFoundError(f"Dataset not found at {DATA_PATH}")
+
 quotes_df = pd.read_excel(DATA_PATH)
 
-# ✅ Use ORIGIN and DESTINATION directly for matching
+# ✅ Create helper columns
 quotes_df["FOB_Name"] = quotes_df["ORIGIN"].astype(str).str.strip()
 quotes_df["Dest_Name"] = quotes_df["DESTINATION"].astype(str).str.strip()
 
@@ -14,35 +19,37 @@ def get_quote_from_dataset(fob, destination, distance_km):
     fob = fob.strip()
     destination = destination.strip()
 
-    # 1️⃣ Exact match
+    # ✅ 1. Exact Match → return full breakdown
     match = quotes_df[
         (quotes_df["FOB_Name"].str.lower() == fob.lower()) &
         (quotes_df["Dest_Name"].str.lower() == destination.lower())
     ]
     if not match.empty:
-        return extract_costs(match.iloc[0])
+        row = match.iloc[0]
+        costs = {
+            "linehaul": float(row["LINEHAUL"]),
+            "fuel": float(row["FUEL"]),
+            "tank_wash": float(row["TANK WASH"]),
+            "other": float(row["OTHER"]),
+            "total": round(float(row["LINEHAUL"]) + float(row["FUEL"]) + float(row["TANK WASH"]) + float(row["OTHER"]), 2)
+        }
+        return costs
 
-    # 2️⃣ No exact match → find closest by coordinate distance
+    # ✅ 2. Unknown Route → calculate average cost per mile
     if "Origin Latitude" in quotes_df.columns and "Destination Latitude" in quotes_df.columns:
-        quotes_df["dist_diff"] = np.abs(
-            np.sqrt(
-                (quotes_df["Destination Latitude"] - quotes_df["Origin Latitude"])**2 +
-                (quotes_df["Destination Longitude"] - quotes_df["Origin Longitude"])**2
-            ) * 111 - distance_km
-        )
+        route_distances = np.sqrt(
+            (quotes_df["Destination Latitude"] - quotes_df["Origin Latitude"])**2 +
+            (quotes_df["Destination Longitude"] - quotes_df["Origin Longitude"])**2
+        ) * 111
     else:
-        # If coordinates missing, fall back to comparing total cost heuristics
-        quotes_df["dist_diff"] = np.abs(distance_km - (quotes_df["TOTAL"] / 2))
+        route_distances = np.full(len(quotes_df), distance_km)  # fallback
 
-    closest = quotes_df.sort_values("dist_diff").iloc[0]
-    return extract_costs(closest)
+    route_distances[route_distances < 1] = 1  # avoid divide by zero
+    avg_cost_per_mile = (quotes_df["TOTAL"] / route_distances).mean()
 
-def extract_costs(row):
+    estimated_total = round(distance_km * avg_cost_per_mile, 2)
+
+    # ✅ Return only estimated total
     return {
-        "linehaul": float(row["LINEHAUL"]),
-        "fuel": float(row["FUEL"]),
-        "tank_wash": float(row["TANK WASH"]),
-        "other": float(row["OTHER"]),
-        "demurrage": float(row["Demurrage"]),
-        "total": float(row["TOTAL"])
+        "total": estimated_total
     }
