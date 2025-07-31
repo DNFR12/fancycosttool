@@ -14,7 +14,7 @@
             width: 300px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
         }
         #panel select, #panel input, #panel button { width: 100%; margin-bottom: 8px; padding: 6px; }
-        #costs { font-size: 14px; }
+        #costs { font-size: 14px; margin-top: 10px; }
     </style>
 </head>
 <body>
@@ -79,7 +79,6 @@ async function calculateRoute() {
     const unknownDest = document.getElementById("unknown_destination").value;
 
     let destination_name, destCoords;
-    let isEstimate = false;
 
     if (knownDest) {
         destination_name = knownDest;
@@ -90,7 +89,6 @@ async function calculateRoute() {
     } else if (unknownDest) {
         destination_name = unknownDest;
         destCoords = await geocode(unknownDest);
-        isEstimate = true;
         if (!destCoords) {
             alert("Destination not found.");
             return;
@@ -125,11 +123,17 @@ async function calculateRoute() {
             <b>Other:</b> $${c.other}<br>
         `;
     }
-    html += `<b>Total:</b> <strong>$${c.total}</strong>`;
+
+    html += `<b>Total:</b> <strong>$${c.total}</strong><br>`;
+
+    if (c.note !== undefined) {
+        html += `<i>${c.note}</i>`;
+    }
+
     document.getElementById("costs").innerHTML = html;
 }
 
-// Initialize destinations for first FOB
+// ✅ Load destinations for initial FOB on page load
 updateKnownDestinations();
 </script>
 </body>
