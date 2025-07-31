@@ -9,11 +9,13 @@
         body { margin:0; font-family: Arial; }
         #map { height: 100vh; width: 100%; }
         #panel {
-            position: absolute; top:70px; left:10px;
+            position: absolute; top:90px; left:10px; /* ✅ lowered slightly */
             background: white; padding: 10px; z-index: 1000;
-            width: 300px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            width: 280px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
         }
-        #panel select, #panel input, #panel button { width: 100%; margin-bottom: 8px; padding: 6px; }
+        #panel select, #panel input, #panel button { width: 100%; margin-bottom: 6px; padding: 5px; }
+        #unknown_destination { width: 95%; } /* ✅ slightly shorter */
+        #manual_inputs input { width: 95%; margin-top: 2px; }
         #costs { font-size: 14px; margin-top: 10px; }
     </style>
 </head>
@@ -35,6 +37,14 @@
 
         <h4>Unknown Destination (Type to Estimate):</h4>
         <input type="text" id="unknown_destination" placeholder="Enter new city..." />
+
+        <!-- ✅ Manual Inputs -->
+        <div id="manual_inputs">
+            <h4>Manual Add-Ons:</h4>
+            <input type="number" id="manual_tank" placeholder="Tank Wash ($)" />
+            <input type="number" id="manual_demurrage" placeholder="Demurrage ($)" />
+            <input type="number" id="manual_other" placeholder="Other ($)" />
+        </div>
 
         <button onclick="calculateRoute()">Calculate</button>
         <div id="costs"></div>
@@ -78,6 +88,11 @@ async function calculateRoute() {
     const knownDest = knownDestEl.value;
     const unknownDest = document.getElementById("unknown_destination").value;
 
+    // ✅ Manual field values
+    const manualTank = parseFloat(document.getElementById("manual_tank").value) || 0;
+    const manualDemurrage = parseFloat(document.getElementById("manual_demurrage").value) || 0;
+    const manualOther = parseFloat(document.getElementById("manual_other").value) || 0;
+
     let destination_name, destCoords;
 
     if (knownDest) {
@@ -115,20 +130,24 @@ async function calculateRoute() {
     html += knownDest ? `<span style="color:green;font-weight:bold;">(Quoted Route)</span><br>` :
                         `<span style="color:orange;font-weight:bold;">(Estimate)</span><br>`;
 
+    let total = c.total;
+
     if (c.linehaul !== undefined) {
         html += `
             <b>Linehaul:</b> $${c.linehaul}<br>
             <b>Fuel:</b> $${c.fuel}<br>
             <b>Tank Wash:</b> $${c.tank_wash}<br>
-            <b>Other:</b> $${c.other}<br>
         `;
     }
 
-    html += `<b>Total:</b> <strong>$${c.total}</strong><br>`;
+    // ✅ Add manual inputs to breakdown & total
+    if (manualTank > 0) { html += `<b>Manual Tank Wash:</b> $${manualTank}<br>`; total += manualTank; }
+    if (manualDemurrage > 0) { html += `<b>Manual Demurrage:</b> $${manualDemurrage}<br>`; total += manualDemurrage; }
+    if (manualOther > 0) { html += `<b>Manual Other:</b> $${manualOther}<br>`; total += manualOther; }
 
-    if (c.note !== undefined) {
-        html += `<i>${c.note}</i>`;
-    }
+    html += `<b>Total:</b> <strong>$${total.toFixed(2)}</strong><br>`;
+
+    if (c.note !== undefined) { html += `<i>${c.note}</i>`; }
 
     document.getElementById("costs").innerHTML = html;
 }
